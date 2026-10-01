@@ -1,0 +1,59 @@
+name: publish
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:          # allow rebuilding from the web UI
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, rid: win-x64,   plat: x64 }
+          - { os: ubuntu-latest,  rid: linux-x64, plat: x64 }
+          - { os: macos-latest,   rid: osx-arm64, plat: arm64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish (${{ matrix.rid }})
+        run: >
+          dotnet publish source/ImageGlassG00Codec.csproj
+          -c Release -r ${{ matrix.rid }} -p:Platform=${{ matrix.plat }}
+          -o out/${{ matrix.rid }}
+        shell: pwsh
+
+      - name: Package .igplugin.zip
+        run: |
+          $rid = "${{ matrix.rid }}"
+          $dir = "out/$rid"
+
+          # Native AOT names the shared library differently per platform:
+          #   Windows -> G00Codec.dll, Linux -> libG00Codec.so, macOS -> G00Codec.dylib
+          $lib = Get-ChildItem $dir -File |
+            Where-Object { $_.Name -match '^(lib)?G00Codec\.(dll|so|dylib)$' } |
+            Select-Object -First 1
+          if (-not $lib) { throw "No G00Codec shared library found in $dir" }
+
+          # The manifest's 'executable' must be the platform's actual filename.
+          $manifest = Get-Content "$dir/igplugin.json" -Raw | ConvertFrom-Json
+          $manifest.executable = $lib.Name
+          $manifest | ConvertTo-Json -Depth 5 | Set-Content "$dir/igplugin.json"
+
+          $zip = "G00Codec-$rid.igplugin.zip"
+          Compress-Archive -Path $lib.FullName, "$dir/igplugin.json" -DestinationPath $zip -Force
+          Write-Host "Packaged $zip with executable=$($lib.Name)"
+        shell: pwsh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: G00Codec-${{ matrix.rid }}
+          path: |
+            G00Codec-${{ matrix.rid }}.igplugin.zip
+            out/${{ matrix.rid }}/*
