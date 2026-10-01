@@ -1,0 +1,10 @@
+{
+  "id": "Plugin_G00Codec",
+  "name": "RealLive G00 Codec",
+  "description": "Native codec plugin that decodes RealLive game engine G00 images (.g00).",
+  "version": "1.0.0",
+  "author": "capacitor1",
+  "website": "https://github.com/capacitor1/ImageGlass-G00-Plugin",
+  "kind": "Codec",
+  "executable": "G00Codec.dll"
+}
